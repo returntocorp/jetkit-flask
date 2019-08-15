@@ -1,21 +1,65 @@
 import json
+from dataclasses import dataclass, astuple, asdict
 
 import requests
 from typing import Dict, Tuple, Optional
-from flask import current_app
+from flask import current_app, Flask
 
 MAILGUN_BASE_URL = "https://api.mailgun.net/v3"
 
 
+_missing = "MISSING"
+
+
+@dataclass
 class Client:
-    def __init__(self):
-        self.base_url = current_app.config.get("MAILGUN_BASE_URL", MAILGUN_BASE_URL)
-        self.enabled = current_app.config["EMAIL_SENDING_ENABLED"]
-        self.support_email = current_app.config["SUPPORT_EMAIL"]
-        self.api_key = current_app.config["MAILGUN_API_KEY"]
-        self.default_sender = current_app.config.get(
-            "MAILGUN_DEFAULT_SENDER", self.support_email
-        )
+    """
+    Mailgun mail client.
+
+    When instantiated without arguments, config is loaded from
+    current Flask app using these fields:
+        `MAILGUN_BASE_URL` (optional),
+        `EMAIL_SENDING_ENABLED`,
+        `SUPPORT_EMAIL`,
+        `MAILGUN_API_KEY`,
+        `MAILGUN_DEFAULT_SENDER` (optional)
+
+    If `app` is provided, everything else is ignored and config is loaded from this app.
+    """
+    base_url: str = None
+    enabled: bool = _missing
+    support_email: str = _missing
+    api_key: str = _missing
+    default_sender: str = None
+    app: Flask = None
+
+    def __post_init__(self):
+        if self.app:
+            self._load_config_from_app(self.app)
+        elif self._none_of_the_fields_are_set():
+            self._load_config_from_app(current_app)
+        self._ensure_required_fields_are_set()
+
+        self.base_url = self.base_url or MAILGUN_BASE_URL
+        self.default_sender = self.default_sender or self.support_email
+
+    def _none_of_the_fields_are_set(self) -> bool:
+        self_fields = astuple(self)
+        return all(field in [None, _missing] for field in self_fields)
+
+    def _ensure_required_fields_are_set(self):
+        for field, value in asdict(self).items():
+            if value is _missing:
+                raise ValueError(
+                    f"Can not instantiate {self.__class__} without '{field}' field"
+                )
+
+    def _load_config_from_app(self, app: Flask):
+        self.base_url = app.config.get("MAILGUN_BASE_URL")
+        self.enabled = app.config["EMAIL_SENDING_ENABLED"]
+        self.support_email = app.config["SUPPORT_EMAIL"]
+        self.api_key = app.config["MAILGUN_API_KEY"]
+        self.default_sender = app.config.get("MAILGUN_DEFAULT_SENDER")
 
     def _auth(self) -> Tuple[str, str]:
         return "api", self.api_key
