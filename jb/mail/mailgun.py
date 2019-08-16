@@ -1,14 +1,11 @@
 import json
-from dataclasses import dataclass, astuple, asdict
+from dataclasses import dataclass, astuple
 
 import requests
 from typing import Dict, Tuple, Optional
 from flask import current_app, Flask
 
 MAILGUN_BASE_URL = "https://api.mailgun.net/v3"
-
-
-_missing = "MISSING"
 
 
 @dataclass
@@ -27,14 +24,14 @@ class Client:
     If `app` is provided, everything else is ignored and config is loaded from this app.
     """
     base_url: str = None
-    enabled: bool = _missing
-    support_email: str = _missing
-    api_key: str = _missing
+    enabled: bool = None
+    support_email: str = None
+    api_key: str = None
     default_sender: str = None
     app: Flask = None
 
     def __post_init__(self):
-        if self.app:
+        if self.app is not None:
             self._load_config_from_app(self.app)
         elif self._none_of_the_fields_are_set():
             self._load_config_from_app(current_app)
@@ -45,11 +42,16 @@ class Client:
 
     def _none_of_the_fields_are_set(self) -> bool:
         self_fields = astuple(self)
-        return all(field in [None, _missing] for field in self_fields)
+        return all(field is None for field in self_fields)
 
     def _ensure_required_fields_are_set(self):
-        for field, value in asdict(self).items():
-            if value is _missing:
+        required_fields = {
+            "enabled": self.enabled,
+            "support_email": self.support_email,
+            "api_key": self.api_key,
+        }
+        for field, value in required_fields.items():
+            if value is None:
                 raise ValueError(
                     f"Can not instantiate {self.__class__} without '{field}' field"
                 )
